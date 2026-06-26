@@ -1,4 +1,6 @@
-const express = require("express")
+const brcypt = require("bcrypt");
+const express = require("express");
+const {z} = require("zod");
 const app = express()
 const jwt = require("jsonwebtoken")
 const JWT_SECRET = "aonbdibedivh";
@@ -9,19 +11,50 @@ mongoose.connect("mongodb+srv://neeraj2004sh_db_user:tqJJUMH9uBR4H81k@cluster0.v
 app.use(express.json())
 
 app.post("/signup",async(req,res)=>{
+    ///input validation
+    const requiredBody = z.object({
+        email: z.string().min(3).max(50).email(),
+        name: z.string().min(4).max(50),
+        password: z.string().min(5).max(40)
+    });
+
+    const parseData = requiredBody.safeParse(req.body);
+    if(!parseData.success){
+        res.json({
+            msg:" Incorrect Format ",
+            error: parseData.error
+        });
+        return
+    }
+
     const email = req.body.email;
     const password = req.body.password;
     const name = req.body.name;
-    
-    await UserModel.create({
-        email: email,
-        password: password,
-        name: name
-    })
 
-    res.json({
-        msg: "you have signup"
-    })
+    let flag = false;
+    try{
+        ///password hashing
+        const hashedPassword = await brcypt.hash(password,5);
+        console.log(hashedPassword);
+    
+        await UserModel.create({
+            email: email,
+            password: hashedPassword,
+            name: name
+        })
+    }
+    catch(e){
+        res.json({
+            msg: "User have alredy signup"
+        })
+        flag = true;
+    }
+
+    if(!flag){
+        res.json({
+            msg: "you have signup"
+        })
+    }
 
 });
 
@@ -30,10 +63,16 @@ app.post("/login",async (req,res)=>{
     const password = req.body.password;
     const user = await UserModel.findOne({
         email: email,
-        password: password
-    })
-    console.log(user);
-    if(user){
+    });
+    if(!user){
+        res.status(403).json({
+            msg:"user doesn't exist's "
+        });
+        return
+    }
+     
+    const passwordMatched = await brcypt.compare(password,user.password);
+    if(passwordMatched){
         const token = jwt.sign({
             id: user._id.toString() 
         },JWT_SECRET);
